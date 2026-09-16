@@ -8,6 +8,9 @@ const actions = {
 };
 
 const flagActions = {
+  mine_red_wool:'Mine and collect up to eight candidates.red_wool blocks from the red supply area when red wool is still needed.',
+  mine_white_wool:'Mine and collect up to eight candidates.white_wool blocks from the white supply area when white wool is still needed.',
+  collect_wool:'Collect candidates.droppedWool before mining more. Available only when this observed drop exists.',
   build_red_bars:'Place up to four candidates.red_bars blocks for the red side panels.',
   build_white_field:'Place up to four candidates.white_field blocks for the white background.',
   build_maple_leaf:'Place up to four candidates.maple_leaf blocks for the red maple leaf.',
@@ -18,7 +21,7 @@ const actionsFor = state => state?.scenario==='flag'?flagActions:actions;
 function requestFor(state, model = 'jev-latest') {
   return { model, state, questions: { movement: {
     type: 'choice',
-    instructions: state.scenario==='flag' ? 'Choose the next construction step for the Canadian flag. The blueprint is supplied by code; you choose which section to build next. Prefer available nearby work and avoid recent failures. candidates contains up to four exact placements per section. An empty section is unavailable. When candidates.canInspect is true, select inspect_flag. Supplied inventory and observed block matches are facts. Never claim success without world verification.' : 'Choose the next Minecraft action to collect 10 new logs and return home. Use task progress, observed candidates, and recent outcomes. Return home once task.collected >= task.target. Otherwise collect reachable dropped logs, or choose a reachable log to harvest; explore if neither exists. A missing or null candidate makes that action unavailable. Avoid repeating failed actions. Candidates come from loaded world blocks, not camera images. Code navigates and executes one bounded action; your choice determines which action runs. Completion is verified from inventory and position, not your confidence.',
+    instructions: state.scenario==='flag' ? 'Choose the next gathering or construction step for the Canadian flag. First mine and collect ALL remaining materials: task.inventory must cover task.required for both colors before any building. During gathering choose a nonempty candidates.red_wool or candidates.white_wool batch, preferably the closer supply, or collect_wool for an available drop. Empty candidates are unavailable. Code restricts mining to the prepared supply areas; never mine the flag. Once all wool is in inventory, choose construction. The blueprint is supplied by code; you choose which section to build next. Prefer available nearby work and avoid recent failures. candidates contains up to four exact placements per section. An empty section is unavailable. When candidates.canInspect is true, select inspect_flag. Observed inventory and block matches are facts. Never claim success without world verification.' : 'Choose the next Minecraft action to collect 10 new logs and return home. Use task progress, observed candidates, and recent outcomes. Return home once task.collected >= task.target. Otherwise collect reachable dropped logs, or choose a reachable log to harvest; explore if neither exists. A missing or null candidate makes that action unavailable. Avoid repeating failed actions. Candidates come from loaded world blocks, not camera images. Code navigates and executes one bounded action; your choice determines which action runs. Completion is verified from inventory and position, not your confidence.',
     criteria: actionsFor(state)
   } } };
 }

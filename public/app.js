@@ -35,9 +35,9 @@ function render(s) {
   $('camera').dataset.mode=s.camera==='overview'?'player':'overview';
   document.querySelector('.world-label').textContent=s.camera==='overview'?'MINECRAFT JAVA / OVERHEAD CAMERA':'MINECRAFT JAVA / LIVE PLAYER VIEW';
   $('view').title=s.camera==='overview'?'Live overhead Minecraft world':'Live first-person Minecraft world';
-  $('milestones').textContent=s.task?.sections?Object.entries(s.task.sections).map(([name,p])=>name.replaceAll('_',' ')+': '+p.placed+'/'+p.total).join(' | '):'';
+  $('milestones').textContent=s.task?.stage==='gathering'?'Mine the wool supply areas, collect every drop, then build.':s.task?.sections?Object.entries(s.task.sections).map(([name,p])=>name.replaceAll('_',' ')+': '+p.placed+'/'+p.total).join(' | '):'';
   $('task-meter').max=s.task?.target||(s.scenario==='flag'?338:10);
-  if(s.scenario==='flag')$('task-progress').textContent=s.task?    s.task.collected+' / '+s.task.target+' blocks verified | '+s.task.remainingSeconds+'s left':'Supplied materials: 234 red wool + 104 white wool. Flat 26 x 13 site required.';
+  if(s.scenario==='flag')$('task-progress').textContent=s.task?    (s.task.stage==='gathering'?'Gathering: '+s.task.inventory.red_wool+'/'+s.task.required.red_wool+' red, '+s.task.inventory.white_wool+'/'+s.task.required.white_wool+' white':s.task.collected+' / '+s.task.target+' flag blocks verified')+' | '+s.task.remainingSeconds+'s left':'Mine 234 red + 104 white wool, then build the flag.';
   if(s.ready)lanPort.value=String(s.gamePort);
   connectButton.disabled=s.ready||s.running;
   $('start').disabled=!s.ready || !s.keyConfigured || s.busy;
@@ -49,7 +49,7 @@ function render(s) {
   $('goal').readOnly=true;
   $('status').textContent=s.status;
   if(s.scenario!=='flag')$('task-progress').textContent=s.task?`${s.task.collected} / ${s.task.target} logs | ${s.task.homeDistance} blocks from home | ${s.task.remainingSeconds}s left`: 'Collect 10 logs, then return home. Five-minute limit.';
-  $('task-meter').value=s.task?.collected||0;
+  $('task-meter').value=s.task?.stage==='gathering'?s.task.inventory.red_wool+s.task.inventory.white_wool:s.task?.collected||0;
   $('start').textContent=s.running?'Task running':s.task&&!s.task.finished&&!s.task.complete&&s.task.remainingSeconds>0?'Resume task':'Start task';
   $('count').textContent=s.count;
   $('hud-goal').textContent=s.goal;

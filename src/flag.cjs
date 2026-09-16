@@ -2,6 +2,8 @@ const {Vec3}=require('vec3');
 const {goals}=require('mineflayer-pathfinder');
 const {bounded,cancel}=require('./task.cjs');
 const {point}=require('./observe.cjs');
+const resources=require('./flag-resources.cjs');
+const BUDGET_MS=1500000;
 // A symmetric, deliberately pixelated maple leaf, surrounded by a white field.
 const LEAF=[
  '......##......',
@@ -19,7 +21,7 @@ const LEAF=[
  '..............'
 ];
 const WIDTH=26,HEIGHT=13;
-const OBJECTIVE='Build a Canadian flag mosaic from supplied red and white wool, then inspect the finished flag.';
+const OBJECTIVE='Mine and collect 234 red and 104 white wool from the supply areas, then build and inspect a Canadian flag.';
 function blueprint(origin){return LEAF.flatMap((row,z)=>Array.from({length:WIDTH},(_,x)=>{
  const side=x<6||x>=20,leaf=!side&&row[x-6]==='#';
  return {position:{x:origin.x+x,y:origin.y,z:origin.z+z},name:side||leaf?'red_wool':'white_wool',section:side?'red_bars':leaf?'maple_leaf':'white_field'};
@@ -30,7 +32,7 @@ function createTask(bot,now=Date.now()){
  const values=process.env.FLAG_ORIGIN?.split(',').map(Number);
  if(values&&(values.length!==3||values.some(n=>!Number.isInteger(n))))throw new Error('FLAG_ORIGIN must be three integer coordinates: x,y,z');
  const origin=values?{x:values[0],y:values[1],z:values[2]}:{x:Math.floor(home.x)+3,y:Math.floor(home.y),z:Math.floor(home.z)-6};
- return {scenario:'flag',home,origin,blueprint:blueprint(origin),startedAt:now,lastProgressAt:now,best:0,inspected:false,failed:{}};
+ return {scenario:'flag',home,origin,blueprint:blueprint(origin),startedAt:now,lastProgressAt:now,best:0,bestSupplies:0,mined:{red_wool:0,white_wool:0},inspected:false,failed:{}};
 }
 function inventory(bot){return Object.fromEntries(['red_wool','white_wool'].map(name=>[name,bot.inventory.items().filter(i=>i.name===name).reduce((n,i)=>n+i.count,0)]));}
 function inspectBlueprint(bot,task){
@@ -48,25 +50,29 @@ function progress(bot,task,now=Date.now()){
  if(scan.correct.length>task.best){task.best=scan.correct.length;task.lastProgressAt=now;}
  const required={red_wool:0,white_wool:0};for(const c of [...scan.missing,...scan.blocked,...scan.unknown])required[c.name]++;
  const sections=Object.fromEntries(['red_bars','white_field','maple_leaf'].map(section=>[section,{placed:scan.correct.filter(c=>c.section===section).length,total:task.blueprint.filter(c=>c.section===section).length}]));
+ const items=inventory(bot),supplies=scan.correct.length+items.red_wool+items.white_wool;
+ if(supplies>(task.bestSupplies||0)){task.bestSupplies=supplies;task.lastProgressAt=now;}
+ const needsMaterials=Object.entries(required).some(([name,n])=>items[name]<n);
  const complete=scan.correct.length===task.blueprint.length&&task.inspected;
- return {scenario:'flag',origin:task.origin,home:task.home,target:task.blueprint.length,collected:scan.correct.length,unit:'blocks',stage:complete?'complete':scan.correct.length===task.blueprint.length?'inspect':'building',complete,finished:task.finishedAt!=null,blocked:scan.blocked.length,unloaded:scan.unknown.length,inventory:inventory(bot),required,sections,elapsedSeconds:Math.floor((now-task.startedAt)/1000),remainingSeconds:Math.max(0,Math.ceil((900000-now+task.startedAt)/1000))};
+ return {scenario:'flag',origin:task.origin,home:task.home,target:task.blueprint.length,collected:scan.correct.length,unit:'blocks',stage:complete?'complete':scan.correct.length===task.blueprint.length?'inspect':needsMaterials?'gathering':'building',complete,finished:task.finishedAt!=null,blocked:scan.blocked.length,unloaded:scan.unknown.length,inventory:items,required,needsMaterials,mined:task.mined||{red_wool:0,white_wool:0},supplyRemaining:resources.scan(bot,task),sections,elapsedSeconds:Math.floor((now-task.startedAt)/1000),remainingSeconds:Math.max(0,Math.ceil((BUDGET_MS-now+task.startedAt)/1000))};
 }
 function stopReason(p,task,now=Date.now()){
  if(p.complete)return 'Complete: Canadian flag built and verified';
  if(p.blocked||p.unloaded)return `Stopped: build site has ${p.blocked} obstructed and ${p.unloaded} unloaded cells. Clear a flat 26 x 13 site before starting.`;
- if(Object.entries(p.required).some(([name,n])=>p.inventory[name]<n))return 'Stopped: supply the remaining red and white wool before starting.';
- if(now-task.startedAt>=900000)return 'Stopped: fifteen-minute flag limit reached';
- if(now-task.lastProgressAt>=90000)return 'Stopped: no construction progress for 90 seconds';
+ if(now-task.startedAt>=BUDGET_MS)return 'Stopped: twenty-five-minute flag limit reached';
+ if(now-task.lastProgressAt>=90000)return 'Stopped: no gathering or construction progress for 90 seconds';
  return null;
 }
 function candidates(bot,task){
  const scan=inspectBlueprint(bot,task),items=inventory(bot),p=bot.entity.position;
+ const required={red_wool:0,white_wool:0};for(const c of scan.missing)required[c.name]++;
+ const gathering=Object.entries(required).some(([name,n])=>items[name]<n);
  const batches={};
  for(const section of ['red_bars','white_field','maple_leaf']){
-   batches[section]=scan.missing.filter(c=>c.section===section&&items[c.name]>0&&(!task.failed[JSON.stringify(c.position)]||Date.now()-task.failed[JSON.stringify(c.position)]>30000))
+   batches[section]=(gathering?[]:scan.missing).filter(c=>c.section===section&&items[c.name]>0&&(!task.failed[JSON.stringify(c.position)]||Date.now()-task.failed[JSON.stringify(c.position)]>30000))
     .sort((a,b)=>vec(a.position).distanceTo(p)-vec(b.position).distanceTo(p)).slice(0,4);
  }
- return {...batches,canInspect:scan.correct.length===task.blueprint.length};
+ return {...batches,...resources.candidates(bot,task,required),canInspect:scan.correct.length===task.blueprint.length};
 }
 async function executeTask(bot,task,choice,seen,signal){
  let active;
@@ -76,6 +82,8 @@ async function executeTask(bot,task,choice,seen,signal){
      if(inspectBlueprint(bot,task).correct.length!==task.blueprint.length)return 'unavailable: blueprint is incomplete';
      task.inspected=true;return 'Verified all 338 blueprint blocks against the live world';
    }
+   if(['mine_red_wool','mine_white_wool','collect_wool'].includes(choice))return resources.execute(bot,task,choice,seen,progress(bot,task).required,signal,()=>progress(bot,task));
+   if(progress(bot,task).needsMaterials)return 'unavailable: gather all remaining wool before construction';
    const section={build_red_bars:'red_bars',build_white_field:'white_field',build_maple_leaf:'maple_leaf'}[choice];
    const cells=seen[section];if(!cells?.length)return 'unavailable: no candidate blocks in this section';
    let placed=0;
@@ -99,4 +107,4 @@ async function executeTask(bot,task,choice,seen,signal){
  });}catch(error){if(active)task.failed[JSON.stringify(active.position)]=Date.now();if(signal.aborted)throw error;return `action failed: ${error.message}`;}
  finally{cancel(bot);}
 }
-module.exports={OBJECTIVE,WIDTH,HEIGHT,LEAF,blueprint,createTask,progress,stopReason,candidates,executeTask,inspectBlueprint};
+module.exports={BUDGET_MS,OBJECTIVE,WIDTH,HEIGHT,LEAF,blueprint,createTask,progress,stopReason,candidates,executeTask,inspectBlueprint};

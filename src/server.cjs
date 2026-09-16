@@ -71,7 +71,7 @@ app.post('/api/:action', (req,res) => {
   if (running || activeLoop) return res.status(409).json({ error:'A run is already active or stopping.' });
   if(bot.game.gameMode !== 'survival')return res.status(409).json({error:'This task requires Survival mode so mined logs drop as items.'});
   const fresh=shouldStartFresh(task,task?taskApi.progress(bot,task):null,scenario.budgetMs);
-  running = true; status = fresh&&scenario.id==='flag'?'Resetting flag and replenishing materials':'Observing';
+  running = true; status = fresh&&scenario.id==='flag'?'Resetting flag and wool supply areas':'Observing';
   const myGeneration = ++generation;
   trackRun(startRun(myGeneration,fresh));
   broadcast(); res.json(snapshot());
@@ -107,7 +107,7 @@ async function startRun(token,fresh){
   try{
     if(fresh){
       history=[];latest=null;count=0;task=null;camera='player';
-      status=scenario.id==='flag'?'Resetting flag and replenishing materials':'Starting a fresh task';broadcast();
+      status=scenario.id==='flag'?'Resetting flag and wool supply areas':'Starting a fresh task';broadcast();
       if(scenario.id==='flag'){
         const prepared=taskApi.createTask(bot);
         await resetFlag(bot,prepared,{port:connectedPort,host:process.env.MC_HOST||'127.0.0.1'});

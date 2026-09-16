@@ -28,9 +28,9 @@ test('flag completion requires all correct live blocks and explicit inspection',
  assert.equal(flag.progress(bot,task,1000).complete,true);
  world.set(new Vec3(0,64,0).toString(),'white_wool');assert.equal(flag.progress(bot,task,1000).complete,false);
 });
-test('missing supplies and obstructed cells stop before building',()=>{
+test('missing supplies enter gathering; obstructed cells stop before building',()=>{
  const {bot,task,world}=fixture();bot.inventory.items=()=>[];
- assert.match(flag.stopReason(flag.progress(bot,task,1),task,1),/supply/);
+ assert.equal(flag.stopReason(flag.progress(bot,task,1),task,1),null);assert.equal(flag.progress(bot,task,1).stage,'gathering');assert.equal(flag.candidates(bot,task).red_bars.length,0);
  world.set(new Vec3(0,64,0).toString(),'stone');assert.match(flag.stopReason(flag.progress(bot,task,1),task,1),/obstructed/);
 });
 test('placement verifies server-confirmed colors and never exceeds the chosen batch',async()=>{

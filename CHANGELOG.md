@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Mine wool before building the Canadian flag
+
+- Added model-selected red/white wool mining and dropped-wool pickup. Inventory must cover the remaining blueprint before construction becomes available. Mining is restricted to separate prepared supply areas.
+- Replay now refills world blocks and starts with empty wool inventory and two shears. No red or white wool is granted to the character. Added a bordered flag pad and separate resource beds to the operator setup commands.
+- Added gathering progress and observations, eight flag choices, a 25-minute budget, and tests for collection, target scope, stage gating, and cancellation. All 34 offline/HTTP tests and documentation checks pass. Live validation completed in 131 decisions and 590 seconds: 234 red + 104 white mined and collected before construction, then 338/338 flag blocks verified. One missed drop was recovered by a model-selected pickup. Recording of that validation run was blocked by the browser surface picker. A later complete recording was reviewed and edited into a 79-second 1080p MP4; README recording status is updated. Video files remain local and excluded from Git.
+
 ### Keep agent hooks local
 
 - Removed tracked Codex settings and hook helpers from the public tree while preserving local copies. The entire .codex directory and both helper scripts are now ignored.
