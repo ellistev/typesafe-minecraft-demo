@@ -12,7 +12,7 @@ Use the TypeSafe AI skill for integration work when available. Read current offi
 4. Add a concise CHANGELOG.md entry for meaningful changes, with actual validation and outstanding limitations. Never claim an unrun check passed.
 5. Report the result and blockers. Questions and read-only investigation do not require artificial documentation edits.
 
-The project Codex hooks support this workflow. Do not bypass hook trust or change global/parent hook settings. Hook code must remain local, with no AI calls, transcript inspection, secret exposure, auto-commit, or publishing.
+Personal agent hooks and settings stay local and must not be committed. The public workflow uses the test and documentation commands above. Do not change global or parent agent settings.
 
 ## Public source boundaries
 

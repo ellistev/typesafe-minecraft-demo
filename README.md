@@ -38,7 +38,7 @@ Use a stable ground-level starting point near trees. Navigation may clear leaves
 
 ## Verification history
 
-- Current validation: all 32 offline/HTTP tests pass, including scenario switching in both directions, unavailable-scenario rejection, exact blueprint checks, missing supplies, placement cancellation, and restart ordering. Generated payloads and whitespace checks pass.
+- Current validation: all 27 public offline/HTTP tests pass, including scenario switching in both directions, unavailable-scenario rejection, exact blueprint checks, missing supplies, placement cancellation, and restart ordering. Generated payloads and whitespace checks pass.
 - Mid-run Restart was verified live: the partial flag cleared, supplies reset, and building resumed with a fresh decision count. Both JSON Copy buttons were verified by pasting their contents into a local text area.
 
 - **Canadian flag verified:** all 338 blocks built and checked in 86 real decisions over 217 seconds. That included 39 red-panel batches, 26 white-field batches, 20 maple-leaf batches, and one inspection. API round trips averaged 128 ms (78-294 ms). The server supplied a cleared pad and wool before the run; the player placed every flag block in Survival mode without task-time teleporting or admin commands.
@@ -485,7 +485,7 @@ Decision logs are stored in `runtime/decisions-*.jsonl` with timestamps, observa
 | `FLAG_ORIGIN` | Relative to starting position | Optional integer `x,y,z` origin of the ground mosaic. |
 | `PORT` | `3010` | Loopback-only dashboard port. |
 
-## Development and documentation hook
+## Development and documentation
 
 ```sh
 npm test
@@ -497,16 +497,7 @@ Tests do not require Minecraft or an API key. `scripts/check-typesafe.cjs` makes
 
 [`AGENTS.md`](AGENTS.md) requires implementation tasks to finish with tests, README review, related documentation updates, and a changelog entry for meaningful changes. Scoped instructions cover controller code and browser UI.
 
-The [project-local Codex hooks](.codex/hooks.json) run at two points:
-
-1. `UserPromptSubmit` saves hashes of project code/config files in ignored local storage. It reads no chat transcript or secrets.
-2. `Stop` refreshes the generated README payload. If work changed but the changelog did not, it requests one continuation to review the README and related docs and update the changelog. A repeated stop reports the unresolved reminder without creating an endless loop.
-
-The hook makes no API calls and does not stage, commit, publish, or modify game state. It updates only the generated README section and ignored bookkeeping. The agent writes explanatory prose and verification results.
-
-**Activation:** open this project in Codex, run `/hooks` in the CLI, and review/trust the exact hook definitions. The project configuration layer must also be trusted. New or changed hooks are skipped until trusted. Restart or resume to load the new files as needed. Direct script tests do not prove that a live session has trusted or fired the hooks. See [official hook documentation](https://learn.chatgpt.com/docs/hooks).
-
-`docs:sync` is the manual fallback; `docs:check` fails if the payload drifts from source. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Run `docs:sync` after changing the request code or fixtures; `docs:check` fails if the README payload drifts from source. These commands and GitHub Actions work without an editor integration. Personal agent hooks and settings are excluded from the public repository. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Repository and privacy
 

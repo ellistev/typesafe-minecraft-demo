@@ -40,6 +40,7 @@ whitelist.json
 .idea/
 .DS_Store
 Thumbs.db
-.codex/*
-!.codex/hooks.json
-!.codex/config.toml
+# Personal agent hooks stay on this machine
+.codex/
+scripts/docs-hook.cjs
+scripts/install-doc-hooks.cjs

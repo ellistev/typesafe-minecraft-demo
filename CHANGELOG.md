@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Keep agent hooks local
+
+- Removed tracked Codex settings and hook helpers from the public tree while preserving local copies. The entire .codex directory and both helper scripts are now ignored.
+- Removed hook installation instructions from public documentation. Kept manual documentation generation, its tests, and GitHub Actions. Hook-specific tests remain local.
+- Validation: all 27 public tests and seven local documentation/hook tests pass, along with generated documentation and staged whitespace checks.
+- The original commit still contains the former hook files; this change does not rewrite published history. The hooks contain no credentials.
+
 ### Public repository preparation
 
 - Prepared fresh project-only Git history, excluding local credentials, session notes, runtime data, recordings, binaries, and game worlds. Expanded ignore rules for credential files, backups, editor settings, and local agent configuration.

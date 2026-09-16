@@ -8,4 +8,4 @@ Decision logs may contain entered goals, coordinates, and responses. Recordings 
 
 If a key is published, revoke it through the provider and remove it from publication history. An ignore rule alone does not fix exposure.
 
-Project hooks run locally and do not read transcripts or environment secrets. Review their source before trusting them. A public vulnerability-reporting contact has not been configured.
+Personal agent settings and hooks are excluded from the public repository. A public vulnerability-reporting contact has not been configured.
