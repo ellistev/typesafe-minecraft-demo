@@ -1,52 +1,66 @@
 # TypeSafe plays Minecraft
 
-A small experiment in controlling a Minecraft Java player with [TypeSafe](https://typesafe.ai). TypeSafe selects gathering, navigation, and construction actions from structured world observations. Mineflayer executes them, and a browser dashboard shows the live world beside actual action probabilities and API responses.
+An experimental Minecraft Java bot controlled through TypeSafe choices, with a live world view and the actual API input and output beside it.
 
-This prototype controls a bot player, not the keyboard or the owner's signed-in character. Choose Lumber Run or Canadian Flag from the scenario selector. Starter Cabin is listed as coming next. There is no scripted route or fake inference fallback.
+## What TypeSafe controls
 
-## Scenarios
+The current dashboard uses **direct actions**: one API decision chooses one 250 ms movement pulse, a 30-degree turn, aim at an observed target, equip an item, mine one eligible block, place one eligible block, inspect, or wait. Mineflayer executes the selected primitive. The running loop does not call automatic pathfinding or batch mining/building.
 
-| Scenario | Status | Objective |
-| --- | --- | --- |
-| Lumber Run | Available | Collect 10 new logs and return home. |
-| Canadian Flag | Available | Mine 234 red and 104 white wool, build a 26 x 13 flag, then verify every block. |
-| Starter Cabin | Coming next | Gather, craft, build, and inspect a small cabin. Not implemented. |
+Code still supplies observations, nearest candidate coordinates, relative distances, the fixed flag blueprint, prepared wool beds, collision vetoes, and completion checks. Aim actions point at a selected target without moving. Mine/place validate the crosshair and target; there is no automatic route, walk to collect drops, equipment selection, or multi-block work inside those actions. This is structured world-state control, not vision from screenshots, and the bot is separate from the owner's signed-in character.
 
-Select a scenario while stopped. Switching discards the current in-memory task and clears its displayed results; Pause/Resume within a scenario retains its state. **Restart task** is available mid-run: it cancels the current action, waits for it to stop, then starts a fresh task with a new timer and decision count. For the configured flag demo it clears the flag and refills the physical wool supply areas; for Lumber Run it records a new home and inventory baseline without restoring trees. The backend rejects switching while an action is active. The objective, progress, and actual TypeSafe choices update with the selection. Camera controls switch between the player's view and an overhead flag camera; they never teleport the player. The overhead camera automatically appears after a successful flag inspection.
+**The earlier video and 131-decision result used high-level control.** TypeSafe chose task batches while Mineflayer handled navigation, aiming, equipment and execution. That video is not evidence of direct movement control. The current direct controller is a separate experiment; uninterrupted mining-to-reveal runs have completed, as detailed below. Each displayed decision is an actual API response, not a frame, key event or protocol packet.
 
-### Canadian Flag
+## Scenarios and cameras
 
-The character first **mines and collects 234 red wool and 104 white wool**, then builds the flag on a separate bordered pad. TypeSafe chooses red-wool mining, white-wool mining, or collection of an observed dropped wool item. Mining actions break up to eight blocks and walk to collect their drops; inventory confirms collection. Construction remains unavailable until both colors cover all remaining blueprint cells. It then chooses red side panels, white field, maple leaf, or final inspection. Placement batches contain up to four cells; completion requires all 338 live blocks to match.
+- **Canadian Flag:** mine and collect 234 red and 104 white wool from prepared physical supply beds, then place and inspect the 338 cells of a supplied 26 x 13 blueprint. Construction is unavailable until inventory covers all remaining cells. The model does not design the flag, farm sheep or craft dyes.
+- **Lumber Run:** collect ten additional inventory logs, then return within two blocks of the recorded start. The direct controller chooses the movement and single-block interactions. Existing logs do not count.
+- **Starter Cabin:** listed but not implemented.
 
-The wool comes from **prepared physical supply areas**, not sheep farming or dye crafting. The isolated demo starts with no wool in inventory and two ordinary shears. Every building block must be mined and picked up. The supplied pixel-art blueprint still determines geometry; TypeSafe chooses the next action, not a new design. Navigation cannot dig or place incidental blocks. Only selected wool cells within the supply areas may be mined.
+Select a scenario while stopped. Third person follows a visible Steve model; Overhead frames the flag site and supply beds, and is available before starting a connected flag task. There is no first-person option. Cameras never teleport the player. The viewer shows equipped shears/wool, walking limbs and mining swings from live equipment, movement and digging telemetry. Animations are visual representations of game activity, not extra actions.
 
-The build origin is set by `FLAG_ORIGIN=x,y,z` (otherwise three blocks east and six north of the starting position). Red supply cells are an 18 x 13 layer at origin offsets x=0..17, z=-19..-7; white supply cells are 8 x 13 at x=20..27, z=-19..-7. Both use the origin Y and need solid ground below. The 26 x 13 flag footprint must be clear with solid support. The command generator prepares polished-andesite borders and a smooth-quartz flag foundation in the disposable demo. It never grants red or white wool directly to inventory.
+Pause releases controls and cancels digging; an already-sent packet can still finish. Resume keeps the current in-memory task; restarting the dashboard loses it. Start after completion/expiry or Restart task performs fresh setup. For the opt-in flag replay it clears only flag wool, refills missing supply blocks, clears wool/shears inventory, supplies two shears, removes scoped wool drops and repositions the bot before inference. It never grants building wool. Obstructions or missing supports prevent reset. Other inventory is preserved. The world is not reset on Pause.
 
-**Replay:** Start after a finished task, or **Restart task** at any time, clears red/white flag blocks, restores missing wool in the two supply areas, clears the character's red/white wool and shears, supplies two shears, removes leftover wool drops within the named areas, and returns the character to the start before inference. Other items are preserved. Unexpected blocks or missing support stop automatic reset. **Pause/Resume** preserves gathering and construction progress. Without automatic reset, prepare the site and supply areas manually; existing inventory or correctly placed blocks count toward what remains needed.
+Flag runs have a 25-minute budget and lumber runs five minutes, with a 6,000-decision ceiling and a 90-second inventory/build-progress watchdog. Direct control requires thousands of calls and can stall. An uninterrupted fresh run is verified below; the controller can still temporarily oscillate and broader repeatability is not established.
 
-The task has a 25-minute wall-clock budget, 300-decision cap, 45-second action deadline, and a 90-second gathering/construction progress timeout. Pause cancels navigation and digging and prevents later placements; an already-sent game packet may still complete. A broken block alone never counts as inventory. An uncollected drop remains eligible for the collection action.
+If the player moves 0.8 blocks or more during inference, or a response takes over five seconds, that answer is logged and counted but never executed. The controller waits 250 ms and asks again with a fresh observation, up to three attempts. Three consecutive stale answers stop the run. Logs include response elapsed time and player displacement so a movement-related rejection can be distinguished from a slow response. HTTP 429, 500, 502, 503, 504 and 529, and the ten-second request timeout, also retry within that same three-attempt limit, waiting one then two seconds and observing again. Timeouts and HTTP failures share the attempt budget: at most two extra requests, never an unlimited retry loop. Timeout failures are logged as errorType=timeout with no HTTP status; ordinary cancellation is not retried. Service failures appear in status and separate log records; they are not counted as model decisions or displayed as invented model outputs. Other errors stop immediately. Pause cancels retry waits. Save an active recording before restarting the dashboard to load code changes.
 
-Run `node scripts/flag-demo-commands.cjs` to print the one-time preparation commands for the isolated demo. **These clear the named disposable site, including the expanded supply areas.** They prepare the flag origin at `64,64,64`, the resource area to its north, and the character's tools. This is operator setup, separate from model-controlled gathering and construction.
+## Preparing the isolated flag site
 
-Automatic replay is explicitly opt-in: set `FLAG_DEMO_RESET=1` and `FLAG_ORIGIN=64,64,64` for the dashboard, and connect to the isolated loopback server on port 25576. The local server must consume `runtime/server-command.txt`. The existing demo wrapper supports this; the public `scripts/run-managed-server.cjs` provides the same mailbox for an already configured `runtime/survival` server, checks loopback/port and explicit EULA acceptance, and uses `JAVA_BIN` (or `java`) to run the downloaded jar. Do not start a second wrapper while a server already owns that world/port. The adapter rejects other hosts, ports, usernames, or origins, refuses to overwrite an occupied mailbox, and waits for the live world/inventory reset before starting the model loop.
+**Start build test** skips gathering for testing. It cancels/drains a current run, clears the flag pad, empties the wool beds, supplies exactly 234 red and 104 white wool, and starts the direct controller at the building stage. The objective visibly says **BUILD TEST - materials supplied; mining skipped**, and each request/log includes the setup mode. Normal Start/Restart still resets to a mining run; Resume retains the current mode. This button requires the same isolated reset adapter described below. Supplied-material tests are not evidence of successful gathering.
 
-### Lumber Run
+The origin is FLAG_ORIGIN=x,y,z, otherwise relative to the starting position. The footprint is 26 x 13 at the origin Y. Red supply blocks occupy offsets x=0..17,z=-19..-7; white occupies x=20..27,z=-19..-7. All cells need solid support. The operator command generator prepares the disposable site with polished-andesite borders and a quartz foundation.
 
-Press **Start task** in a Survival world. The player remembers its starting position and inventory, then TypeSafe chooses between harvesting either of two nearby logs, collecting a dropped log, exploring a reachable location, returning home, or waiting. The dashboard shows inventory progress, distance home, remaining time, actual probabilities, and responses.
+Run node scripts/flag-demo-commands.cjs to print preparation commands. These clear the named disposable site, including both supply areas. This is operator setup, not model activity.
 
-Success requires at least 10 additional logs still in inventory and a three-dimensional distance of at most two blocks from home. Existing logs and broken-but-uncollected blocks do not count. A run stops after five minutes, 120 decisions, 90 seconds without inventory/return progress, low health, death, disconnect, an API error, or an action timeout. Each action has a 20-second limit. Pause cancels inference, navigation, and digging. Resume preserves home and inventory baseline within the same Node process; the five-minute wall-clock budget includes pauses. Restarting Node resets task memory.
+Automatic replay requires FLAG_DEMO_RESET=1, FLAG_ORIGIN=64,64,64, the TypeSafeExplorer bot and a loopback server on port 25576 consuming runtime/server-command.txt. The public scripts/run-managed-server.cjs provides that mailbox for an already configured runtime/survival server, checks explicit EULA acceptance, and uses JAVA_BIN or java. Do not run a second wrapper against an active world. Other hosts, ports, origins and player names are rejected.
 
-Use a stable ground-level starting point near trees. Navigation may clear leaves, but cannot place blocks, mine other terrain, parkour, swim through water, or plan drops greater than two blocks. It uses loaded blocks, including blocks outside the camera view. Paths and candidate availability are estimates and can fail as the world changes. These are bounded scenarios, not general natural-language Minecraft automation.
+## Current verification
 
-## Verification history
+The latest controller completed a recorded run in 801 seconds (13m21s), with 1,848 model decisions, all 338 supply blocks mined and collected before building, and all 338 flag cells placed and inspected. The run had no maintenance pauses or manual gameplay intervention and recovered automatically from one service error. The full recording was reviewed for a 1m42s short edit and a 2m57s extended edit, both with labeled speedups and the real decision panel visible. This verifies successful gameplay, not guaranteed repeatability. When building and no candidate is visible, movement criteria include the current and estimated horizontal distance after an approximately one-block pulse to the nearest supplied placement candidate. These are geometry estimates, not predicted collision-free paths. All otherwise-safe movement choices remain available, and TypeSafe still selects every action. The instruction highlights sideways approaches and avoiding switches between nearby and distant gaps. No automatic navigation or replacement decision was added.
+
+An uninterrupted fresh run completed with 2,266 model decisions in 991 seconds (16m31s). It mined and collected all 234 red and 104 white wool before its first placement, placed and verified all 338 cells, and selected inspect_flag. Inventory and supply beds ended empty. It briefly oscillated at 329 cells, then recovered and finished without a pause, controller reload, reset, supplied wool or budget extension. The log contains no maintenance entries for this run. A proposed movement-description change was tested offline but was never loaded and was discarded. This verifies one clean completion, not guaranteed repeatability.
+
+### Earlier debugging runs
+
+A subsequent fresh run collected all materials but stopped at 37 placements after alternating aim between targets. Investigation found two geometry errors: mutating a normalized vector shortened the visibility ray to 1.05 blocks, and the installed cursor helper cast from full body height while aiming used eye height. Visibility now retains the full target distance, and crosshair validation uses the same eye height as aiming. Both checks use the same 4.5-block reach with no extra visibility margin. Nearby genuinely occluded aims are omitted; distant targets remain available for orientation. Visibility also accounts for Mineflayer mouse-sensitivity rounding at block edges. Corrected a reversed left/right sign in relative target observations. Regression tests cover ray length, eye height, rounded edge geometry, cardinal directions and alternating targets. The failed run was recovered to a verified 338-cell reveal with its existing inventory and placements preserved: 3,801 decisions, all 338 materials mined and collected before construction, and no supplied building wool. It required further maintenance pauses, explicit watchdog recoveries and a logged two-minute debug budget extension. Wall time was 37m31s including pauses. This is a completed debug continuation, not an uninterrupted replay or proof of repeatability. The normal 25-minute limit remains unchanged. Approach instructions now require moving beside enclosed gaps instead of stopping several blocks away.
+
+All 72 offline/HTTP tests pass. A normal direct-control run mined and collected all 234 red and 104 white wool before its first placement, placed all 338 cells, and selected inspect_flag. The world check passed all cells; both supply beds and wool inventory ended empty. The overhead reveal and completed dashboard were visually verified. The run logged 2,513 model decisions and 1,049 task seconds (17m29s), excluding logged maintenance pauses. It included code corrections while paused, preserving inventory and placements; this is evidence of completed gameplay, not an uninterrupted run or a repeatability claim for the final version. No building wool was supplied.
+
+The actual choice list is phase-specific: gathering excludes placement, wool-equipping and flag-inspection actions; building excludes mining, shears and drop-aim actions. Additional checks omit observed unsafe movement and unavailable or redundant interactions. Returned choices are validated against that exact offered set, and the dashboard displays only those criteria. Code does not substitute another movement or route.
+
+The direct controller allows verified one-block descents and maps backward to Mineflayer's back control. Drop observations retain the real item position plus a block-center approachPosition; relative distances and drop-aim actions use that approach point so the player can step off neighboring block edges. Placement observations include visibility, player-body overlap, whether the aim already matches, and the wool required at the aimed cell. Visible placement supports are preferred among candidate observations. These are explicit observation and execution rules, not automatic navigation. Camera packets affect rendering only.
+
+Earlier partial validation: a supplied-material build test placed 15 blocks through 90 decisions, with zero mined blocks. Steve and held shears were visually checked during gathering. The later successful direct-control recording was reviewed as described above. Recordings from the earlier high-level controller remain historical.
+
+## Historical high-level verification
 
 - **Mine-and-build flag verified:** started with zero wool, mined 234 red and 104 white supply blocks, collected all materials before the first placement, then built and inspected all 338 flag cells. The run took 131 real TypeSafe decisions and 590 seconds. One missed white-wool pickup was recovered by a separate model-selected collection action. Both supply beds ended empty and no wool remained in inventory. The completed flag was visually checked from overhead. Recording of this validation run was not completed. A subsequent full mine-and-build recording was reviewed and edited into a 79-second, 1080p H.264 MP4 showing gathering, labelled 6x construction, and the completed flag. Recordings remain excluded from the repository.
 
-- Current validation: all 34 public offline/HTTP tests pass, including scenario switching in both directions, unavailable-scenario rejection, exact blueprint checks, missing supplies, placement cancellation, and restart ordering. Generated payloads and whitespace checks pass.
+- Historical validation: all 36 public offline/HTTP tests pass, including scenario switching in both directions, unavailable-scenario rejection, exact blueprint checks, missing supplies, placement cancellation, and restart ordering. Generated payloads and whitespace checks pass.
 - Mid-run Restart was verified live: the partial flag cleared, supplies reset, and building resumed with a fresh decision count. Both JSON Copy buttons were verified by pasting their contents into a local text area.
 
 - **Earlier construction-only flag verified:** all 338 blocks built and checked in 86 real decisions over 217 seconds. That included 39 red-panel batches, 26 white-field batches, 20 maple-leaf batches, and one inspection. API round trips averaged 128 ms (78-294 ms). The server supplied a cleared pad and wool before the run; the player placed every flag block in Survival mode without task-time teleporting or admin commands.
-- Confirmed the completed flag in the overhead view and verified that changing scenarios during construction returns HTTP 409. The maple leaf is deliberately coarse pixel art. The overhead camera currently shows the world without the controlled player's avatar. Tab recording was verified in the later mine-and-build recording described above.
+- Confirmed the completed flag in the overhead view and verified that changing scenarios during construction returns HTTP 409. The maple leaf is deliberately coarse pixel art. That earlier overhead view omitted the player avatar; third-person support now renders it in overhead view too. Tab recording was verified in the later mine-and-build recording described above.
 
 - **Gather-and-return verified:** a Survival run collected 10 new inventory logs and returned within one block of its recorded start. It used 17 real TypeSafe decisions in approximately 53 seconds: 10 harvests, six pickup actions, and one return. API round trips averaged 136 ms (88-243 ms). No items were granted and no teleport occurred during the task.
 - Test preparation used a separate peaceful Survival world and placed the player on nearby solid ground before starting. The initial natural spawn was on a dense canopy with no reachable candidates. This is evidence for a prepared forest demo, not proof of reliable behavior at arbitrary spawn locations.
@@ -58,7 +72,7 @@ Use a stable ground-level starting point near trees. Navigation may clear leaves
 - The dashboard waiting state and HTTP validation were checked locally.
 - A live API smoke test with **synthetic terrain** returned `forward` from `jev-1.13.0` in 335 ms. This is one observed request, not a latency benchmark or gameplay result.
 - **In-game movement and first-person rendering verified** on a local Java 1.21.4 world. The first run logged 60 completed live decisions, 10 actions with more than 0.1 blocks of horizontal movement, and approximately 10.04 blocks of accumulated horizontal travel. API round trips ranged from 79 to 308 ms, averaging 137 ms in that run. Accumulated travel includes retracing steps; it is not net exploration distance.
-- That older controller spent many decisions turning in dense tree cover. The current task controller uses pathfinding instead.
+- That older controller spent many decisions turning in dense tree cover. The subsequent high-level controller used pathfinding; the current direct loop does not.
 
 ## Requirements and setup
 
@@ -92,9 +106,9 @@ Each decision uses `POST https://api.typesafe.ai/v1/systemone`. Authentication i
 | --- | --- |
 | `model` | `jev-latest` by default, configurable with `TYPESAFE_MODEL`. |
 | `state` | The goal, current player observations, and recent action outcomes. |
-| `questions` | One `choice` question named `movement` (retained API ID): six lumber actions or eight flag actions. |
+| `questions` | One `choice` question named `movement` (retained API ID): up to 20 direct action choices; absent or already-aligned drop aims are omitted. |
 
-The state is assembled in [`src/observe.cjs`](src/observe.cjs) and [`src/task.cjs`](src/task.cjs):
+The state is assembled by the observation, scenario-progress and direct-control modules:
 
 | State field | Meaning |
 | --- | --- |
@@ -104,9 +118,10 @@ The state is assembled in [`src/observe.cjs`](src/observe.cjs) and [`src/task.cj
 | `headingDegrees` | Player yaw converted to rounded degrees. |
 | `terrain` | Samples 1, 2, 3, and 4 blocks away, forward, left, right, and behind. Left/right are 60 degrees from the current heading. |
 | `nearbyEntities` | Up to eight other entities within 12 blocks, with names and distances; not sorted by distance. |
-| `scenario` | `lumber` or `flag`; selects the question and allowed actions. |
+| `scenario` | `lumber` or `flag`; selects observations and objective validation. |
 | `task` | Scenario progress: inventory and home distance for lumber; correct live block count, inventory, remaining material requirements, mined counts, supply-area block counts, section totals, obstructions, and origin for the flag. Both include stage, completion, and time budget. |
-| `candidates` | Up to two reachable log blocks, a reachable dropped-log entity, and a reachable exploration destination; absent options are empty/null. Failed lumber targets cool down for 45 seconds. Flag candidates include up to eight mining targets per color, an observed `droppedWool`, up to four placements per section after gathering, and `canInspect`; failed targets cool down for 30 seconds. |
+| `controlMode` | `direct`, identifying the current primitive-action loop. |
+| `direct` | Two nearest mining/placement targets, observed drops, relative forward/right distances, held item, crosshair block, movement vetoes and interaction availability. No route is computed. |
 | `recentActions` | Up to eight previous actions, outcomes, measured horizontal movement, and ending positions. |
 
 For each terrain sample, code examines the blocks below the feet, at foot and head height, and one higher. It reports `clear`, `one_block_rise`, `blocked`, `hazard`, `drop_or_no_floor`, or `unknown`. Known samples include ground, foot, and head block names. An unloaded sample contains only distance and `unknown` status. These are sparse local probes, not a full map or camera-visible scene.
@@ -139,25 +154,6 @@ These are **synthetic examples**, not captured gameplay. Fixtures are in [`docs/
       "finished": false,
       "elapsedSeconds": 40,
       "remainingSeconds": 260
-    },
-    "candidates": {
-      "logs": [
-        {
-          "position": {
-            "x": 15,
-            "y": 65,
-            "z": 28
-          },
-          "name": "oak_log",
-          "distance": 2.7
-        }
-      ],
-      "droppedLog": null,
-      "exploreDestination": {
-        "x": 20,
-        "y": 64,
-        "z": 30
-      }
     },
     "position": {
       "x": 12.5,
@@ -295,30 +291,53 @@ These are **synthetic examples**, not captured gameplay. Fixtures are in [`docs/
         "distance": 6.2
       }
     ],
-    "recentActions": [
-      {
-        "action": "harvest_nearest",
-        "outcome": "mined oak_log; inventory verifies collection",
-        "distanceMoved": 2.8,
-        "position": {
-          "x": 12.5,
-          "y": 64,
-          "z": 28.3
+    "recentActions": [],
+    "controlMode": "direct",
+    "direct": {
+      "miningTargets": [
+        {
+          "name": "oak_log",
+          "position": {
+            "x": 15,
+            "y": 64,
+            "z": 28
+          },
+          "distance": 3,
+          "forward": 3,
+          "right": 0
         }
+      ],
+      "placementTargets": [],
+      "drops": [],
+      "heldItem": null,
+      "crosshair": null,
+      "canMine": false,
+      "canPlace": false,
+      "canInspect": false,
+      "movementSafe": {
+        "forward": true,
+        "backward": true,
+        "left": true,
+        "right": true,
+        "jump_forward": true
       }
-    ]
+    }
   },
   "questions": {
     "movement": {
       "type": "choice",
-      "instructions": "Choose the next Minecraft action to collect 10 new logs and return home. Use task progress, observed candidates, and recent outcomes. Return home once task.collected >= task.target. Otherwise collect reachable dropped logs, or choose a reachable log to harvest; explore if neither exists. A missing or null candidate makes that action unavailable. Avoid repeating failed actions. Candidates come from loaded world blocks, not camera images. Code navigates and executes one bounded action; your choice determines which action runs. Completion is verified from inventory and position, not your confidence.",
+      "instructions": "Choose one useful Minecraft control action. Every movement, aim, equip, mine and placement needs your separate choice. Code supplies observations and a fixed blueprint, not navigation. Use only offered choices.\n\nBUILDING or INSPECT stage: Gathering is finished. Inventory already covers ALL remaining cells in task.required. Do not return home, search for supplies, or wait merely because miningTargets and drops are empty. Finish direct.placementTargets. When canPlace is true, place now. When aimedPlacement exists, equip its named wool then place. Otherwise aim at a visible placement target. If none is visible, move closer until one becomes visible. A gap surrounded by wool requires standing right beside its edge, not stopping several blocks away. Strafe right for positive right and left for negative right; move forward for positive forward and backward for negative forward. Aim_place can turn toward distant targets. A negative forward distance means the target is BEHIND you: aim toward it or move backward, never continue forward away from it. BlockedByPlayer means move away to uncover the cell. AlreadyAimed but not visible means change position, not aim again. Inspect when canInspect is true.\n\nGATHERING stage: Collect direct.drops before mining more. Their approachPosition is a block center to WALK OVER; pickup happens automatically by proximity. Aim_drop faces that point, then choose movement. If a wool block obstructs access, jump_forward or aim and mine it. Otherwise approach a miningTarget, aim, equip shears and mine one block. Do not keep aiming if canMine is true. For lumber, collect ten new logs then walk home.\n\nDirections are relative to the player: positive forward is ahead, negative is behind; positive right is right, negative is left. Forward/backward/strafe pulses move roughly one block. Jump crosses a one-block rise. When building and no target is visible, compare the distance estimates in the movement choices. Approach placementTargets[0], the nearest remaining gap, until a placement becomes visible. A sideways step can bring you closer while forward/backward takes you farther away. Do not alternate between approaching the nearest gap and aiming at a farther gap. Estimates are approximate; observe safety and actual outcomes. Do not repeat actions that make no progress. Wait only when no useful action is available.",
       "criteria": {
-        "harvest_nearest": "Navigate to and mine candidates.logs[0], when more logs are needed.",
-        "harvest_alternative": "Navigate to and mine candidates.logs[1], when the first target is unsuitable or recently failed.",
-        "pickup": "Walk to candidates.droppedLog to collect it. Prefer collecting existing drops before mining more.",
-        "explore": "Walk to candidates.exploreDestination to find more reachable trees when no log or drop is available.",
-        "return_home": "Navigate back to task.home when task.collected reaches task.target.",
-        "wait": "Wait when no useful available action is safe."
+        "forward": "Hold forward for 250 milliseconds. No automatic steering.",
+        "backward": "Hold backward for 250 milliseconds.",
+        "left": "Strafe left for 250 milliseconds without turning.",
+        "right": "Strafe right for 250 milliseconds without turning.",
+        "jump_forward": "Jump and hold forward for 250 milliseconds to climb a one-block rise.",
+        "turn_left": "Turn left by 30 degrees, without walking.",
+        "turn_right": "Turn right by 30 degrees, without walking.",
+        "aim_mine_0": "Look at miningTargets[0]. Only changes aim, never moves or mines.",
+        "equip_shears": "Select shears from inventory; does not mine.",
+        "wait": "Release controls and wait 250 milliseconds."
       }
     }
   }
@@ -408,47 +427,52 @@ These are **synthetic examples**, not captured gameplay. Fixtures are in [`docs/
         "white_wool": 104
       }
     },
-    "candidates": {
-      "red_wool": [
+    "controlMode": "direct",
+    "direct": {
+      "miningTargets": [
         {
+          "name": "red_wool",
           "position": {
-            "x": 64,
+            "x": 15,
             "y": 64,
-            "z": 57
+            "z": 28
           },
-          "name": "red_wool"
+          "distance": 3,
+          "forward": 3,
+          "right": 0
         }
       ],
-      "white_wool": [
-        {
-          "position": {
-            "x": 84,
-            "y": 64,
-            "z": 57
-          },
-          "name": "white_wool"
-        }
-      ],
-      "droppedWool": null,
-      "red_bars": [],
-      "white_field": [],
-      "maple_leaf": [],
-      "canInspect": false
+      "placementTargets": [],
+      "drops": [],
+      "heldItem": null,
+      "crosshair": null,
+      "canMine": false,
+      "canPlace": false,
+      "canInspect": false,
+      "movementSafe": {
+        "forward": true,
+        "backward": true,
+        "left": true,
+        "right": true,
+        "jump_forward": true
+      }
     }
   },
   "questions": {
     "movement": {
       "type": "choice",
-      "instructions": "Choose the next gathering or construction step for the Canadian flag. First mine and collect ALL remaining materials: task.inventory must cover task.required for both colors before any building. During gathering choose a nonempty candidates.red_wool or candidates.white_wool batch, preferably the closer supply, or collect_wool for an available drop. Empty candidates are unavailable. Code restricts mining to the prepared supply areas; never mine the flag. Once all wool is in inventory, choose construction. The blueprint is supplied by code; you choose which section to build next. Prefer available nearby work and avoid recent failures. candidates contains up to four exact placements per section. An empty section is unavailable. When candidates.canInspect is true, select inspect_flag. Observed inventory and block matches are facts. Never claim success without world verification.",
+      "instructions": "Choose one useful Minecraft control action. Every movement, aim, equip, mine and placement needs your separate choice. Code supplies observations and a fixed blueprint, not navigation. Use only offered choices.\n\nBUILDING or INSPECT stage: Gathering is finished. Inventory already covers ALL remaining cells in task.required. Do not return home, search for supplies, or wait merely because miningTargets and drops are empty. Finish direct.placementTargets. When canPlace is true, place now. When aimedPlacement exists, equip its named wool then place. Otherwise aim at a visible placement target. If none is visible, move closer until one becomes visible. A gap surrounded by wool requires standing right beside its edge, not stopping several blocks away. Strafe right for positive right and left for negative right; move forward for positive forward and backward for negative forward. Aim_place can turn toward distant targets. A negative forward distance means the target is BEHIND you: aim toward it or move backward, never continue forward away from it. BlockedByPlayer means move away to uncover the cell. AlreadyAimed but not visible means change position, not aim again. Inspect when canInspect is true.\n\nGATHERING stage: Collect direct.drops before mining more. Their approachPosition is a block center to WALK OVER; pickup happens automatically by proximity. Aim_drop faces that point, then choose movement. If a wool block obstructs access, jump_forward or aim and mine it. Otherwise approach a miningTarget, aim, equip shears and mine one block. Do not keep aiming if canMine is true. For lumber, collect ten new logs then walk home.\n\nDirections are relative to the player: positive forward is ahead, negative is behind; positive right is right, negative is left. Forward/backward/strafe pulses move roughly one block. Jump crosses a one-block rise. When building and no target is visible, compare the distance estimates in the movement choices. Approach placementTargets[0], the nearest remaining gap, until a placement becomes visible. A sideways step can bring you closer while forward/backward takes you farther away. Do not alternate between approaching the nearest gap and aiming at a farther gap. Estimates are approximate; observe safety and actual outcomes. Do not repeat actions that make no progress. Wait only when no useful action is available.",
       "criteria": {
-        "mine_red_wool": "Mine and collect up to eight candidates.red_wool blocks from the red supply area when red wool is still needed.",
-        "mine_white_wool": "Mine and collect up to eight candidates.white_wool blocks from the white supply area when white wool is still needed.",
-        "collect_wool": "Collect candidates.droppedWool before mining more. Available only when this observed drop exists.",
-        "build_red_bars": "Place up to four candidates.red_bars blocks for the red side panels.",
-        "build_white_field": "Place up to four candidates.white_field blocks for the white background.",
-        "build_maple_leaf": "Place up to four candidates.maple_leaf blocks for the red maple leaf.",
-        "inspect_flag": "Verify the finished flag. Choose only when candidates.canInspect is true.",
-        "wait": "Wait if no construction action is available."
+        "forward": "Hold forward for 250 milliseconds. No automatic steering.",
+        "backward": "Hold backward for 250 milliseconds.",
+        "left": "Strafe left for 250 milliseconds without turning.",
+        "right": "Strafe right for 250 milliseconds without turning.",
+        "jump_forward": "Jump and hold forward for 250 milliseconds to climb a one-block rise.",
+        "turn_left": "Turn left by 30 degrees, without walking.",
+        "turn_right": "Turn right by 30 degrees, without walking.",
+        "aim_mine_0": "Look at miningTargets[0]. Only changes aim, never moves or mines.",
+        "equip_shears": "Select shears from inventory; does not mine.",
+        "wait": "Release controls and wait 250 milliseconds."
       }
     }
   }
@@ -469,13 +493,13 @@ The response contains `model`, `answers.movement`, and token `usage`. The moveme
 
 The controller validates the response, checks observation freshness, executes the action, and measures the resulting movement. The next request includes that outcome. TypeSafe returns typed decisions; the dashboard does not invent an inner monologue.
 
-For lumber, TypeSafe selects `harvest_nearest`, `harvest_alternative`, `pickup`, `explore`, `return_home`, or `wait`. Code enumerates candidates and checks paths, then executes the selected action. For the flag, choices are `mine_red_wool`, `mine_white_wool`, `collect_wool`, `build_red_bars`, `build_white_field`, `build_maple_leaf`, `inspect_flag`, and `wait`. No fallback silently substitutes another action. Inventory and position determine lumber completion; exact live blueprint matches plus inspection determine flag completion.
+Both scenarios use the direct choices in the generated examples above. No fallback silently substitutes another action. Inventory and position determine lumber completion; exact live blueprint matches plus inspection determine flag completion. The old batch actions remain in source for historical tests but are not used by the dashboard loop.
 
-Code handles navigation, physics, mining, validation, and stopping. Responses older than five seconds or based on a position displaced by at least 0.8 blocks are rejected. The model receives task progress and nearby candidates rather than screenshots or the full world map. It has a short action history; the application retains home, baseline inventory, failed targets, and explored destinations during a task.
+Code handles control-key execution, game protocol interactions, physics, validation, and stopping. Responses older than five seconds or based on a position displaced by at least 0.8 blocks are rejected. The model receives task progress and nearby candidates rather than screenshots or the full world map. It has a short action history; the application retains home and baseline inventory during a task.
 
 ## Recording and local data
 
-**Record tab** opens the browser's screen-sharing picker. Select the dashboard tab, then stop recording to download a WebM video. Nothing is posted automatically. Prismarine Viewer renders the real server world from the bot's perspective.
+**Record tab** opens the browser's screen-sharing picker. Select the dashboard tab, then stop recording to download a WebM video. Nothing is posted automatically. Prismarine Viewer renders the real server world in third-person or overhead view.
 
 Decision logs are stored in `runtime/decisions-*.jsonl` with timestamps, observations, actual responses, outcomes, and movement measurements. Logs, videos, world files, keys, and session notes are excluded from the intended public tree. See [SECURITY.md](SECURITY.md).
 

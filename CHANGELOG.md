@@ -2,6 +2,73 @@
 
 ## Unreleased
 
+### Publish the direct-control demo
+
+- The recorded final controller run completed mining, collection, all 338 placements and inspection in 1,848 decisions and 13m21s. No maintenance pause or manual gameplay intervention was needed; one service error recovered automatically. Updated README verification to match the reviewed recording. Earlier entries below retain their validation limits at the time.
+- Publish direct action control, phase-specific choices, third-person/overhead cameras with a visible equipped avatar, the explicit supplied-material build test, fresh-state retries, timeout recovery and movement geometry fixes. Keep recordings, runtime logs, credentials and personal hooks local.
+
+### Clarify movement choices near the final gaps
+
+- A paused run at 331/338 cells alternated forward/backward and aimed at a farther target while the nearest gap remained to the left. Added structured geometric distance estimates to movement choices only during occluded construction. TypeSafe chooses every action; all otherwise-safe alternatives remain available. No hidden navigation, selected replacement action or additional model was introduced.
+- All 72 offline/HTTP tests pass, including the exact paused geometry, safety filtering and unchanged gathering/visible-placement criteria. Documentation checks pass. No live TypeSafe calls were made; behavioral improvement remains unverified.
+
+### Retry request timeouts within the existing limit
+
+- The ten-second TypeSafe request deadline previously stopped the run immediately because only HTTP errors were retried. TimeoutError now uses the same three-attempt budget and one/two-second backoff, taking fresh observations for retries. Pause and ordinary aborts are never retried. Status and logs distinguish timeouts from HTTP failures.
+- All 71 offline/HTTP tests pass, including a native AbortSignal timeout, fresh retry state, mixed timeout/HTTP exhaustion and cancellation during inference/backoff. Documentation checks pass. No live TypeSafe calls were used to validate this fix.
+
+### Uninterrupted direct-control replay verified
+
+- A fresh normal run completed all mining, collection, 338 placements and final inspection in 2,266 decisions and 16m31s, with no maintenance pause, reload, reset or budget extension. A late movement loop at 329 cells resolved without intervention. The proposed distance-description experiment was never loaded and was discarded; running controller behavior is unchanged. README verification updated.
+
+### Correct placement visibility and crosshair geometry
+
+- A fresh replay stalled at 37 placements by alternating aim between targets. Fixed a normalized vector mutation that shortened visibility rays, a full-height cursor check inconsistent with eye-height aiming, and a reach margin that offered targets beyond the interaction limit. Candidate visibility and crosshair checks now share eye height and a 4.5-block reach. Nearby occluded aim options are omitted. Also match Mineflayer mouse-sensitivity rounding before judging edge visibility and correct a reversed sign in relative right distances. All 67 tests pass, including range, eye-height, actual edge geometry, cardinal headings and alternating-target regressions. Recovered the original run through all 338 placements and the model-selected inspection, with empty final inventory and a visually verified overhead reveal. It used 3,801 decisions and required maintenance pauses, watchdog recoveries and one logged two-minute debug extension; normal run limits remain unchanged. Clarified approaching enclosed gaps. No world reset or building-wool grant was used. An uninterrupted replay of the final version remains unverified.
+
+### Direct-control flag reveal verified
+
+- Completed normal gathering and construction: 234 red plus 104 white mined and collected before placement; all 338 cells verified, inventory empty, and overhead reveal visually checked. The run used 2,513 decisions and 1,049 task seconds excluding logged maintenance pauses. Fixes were loaded while paused; a clean repeat with the final version remains unverified. No building materials were granted.
+- All 62 offline/HTTP tests pass. Corrected movement, collection approach points, placement body collision, line of sight, equipment observations and phase-specific choices. The latest probability panel was checked in the browser.
+- Earlier entries below describe intermediate findings and their validation limits at that time.
+
+- Enforced separate gathering/building interaction choices in the API, and made the probability panel match the latest actual offered criteria. Added placement visibility, body-collision and equipment-state observations to prevent repeated impossible actions. Replaced accumulated prompt rules with explicit phase guidance. End-to-end validation remains in progress.
+
+### Validate direct movement through the full task
+
+- Fixed an incorrect backward control name and safety checks that rejected ordinary one-block descents. Continue rejecting deeper drops, hazards and unloaded terrain. Omit observed unavailable actions instead of repeatedly offering choices that execution must veto.
+- Added a labelled block-center approach point for dropped items: live testing showed exact item coordinates near a hole edge could leave the player supported by neighboring wool. Aiming remains separate from movement. All 58 tests pass; full gameplay validation is in progress.
+
+### Prevent repeated aiming at an aligned drop
+
+- Diagnosed 337 drop-aim decisions in a 356-decision run that collected two wool blocks and hit the 90-second watchdog. The drop was already straight ahead, ordinary forward movement was blocked, and jumping was available.
+- Omit absent/already-aligned drop-aim options from the actual API choices and validate against that same set. Clarify jumping or mining a wool obstruction to reach a drop. No movement is automatically substituted. Added regression coverage using the observed geometry; gameplay verification remains pending.
+
+### Prioritize collecting mined drops
+
+- Added two aim-only drop actions and collection-first instructions. Each movement remains a separate model choice; no pickup pathfinding or automatic movement was added. Drop aiming rechecks live items, and flag observations exclude colors already sufficiently stocked.
+- A live run mined all 338 supply blocks but wandered away with only 159 red and 91 white in inventory. Paused for diagnosis. Added tests for aim-only behavior, vanished drops and filtering stocked colors. Revised gameplay remains unverified.
+
+### Retry temporary TypeSafe failures
+
+- A live run reached 458 decisions, mining 180 red and 80 white wool, before HTTP 529 stopped it. TypeSafe documents that status as temporary overload. Added bounded exponential backoff for 429 and selected server errors, with a fresh observation per attempt, visible retry status and separate failure logs. Authentication and validation errors still stop immediately. Failed requests are not counted as model decisions.
+- Added tests for recovery, exhaustion, non-retryable failures and cancellation. Full live recovery and flag completion remain unverified.
+
+### Recover from a transient stale observation
+
+- Replaced the immediate stale-observation stop with up to three fresh inference attempts. Rejected responses remain unexecuted, appear in the actual input/output panel, and count toward the decision limit. Pause cancels retries. Logs now include elapsed time and displacement.
+- Diagnosed a recorded gathering run that stopped after decision 203, a jump. The old log omitted the rejected response, so the exact rejection cause cannot be established. Added offline tests for jump displacement, slow responses, retry exhaustion, cancellation, and run replacement. Live verification of this recovery is pending; the active dashboard was left untouched to preserve the user's recording. README updated.
+- Validation: all 49 offline/HTTP tests pass.
+
+### Direct controls, overhead and tools
+
+- Added Start build test using the restricted reset adapter: empty the resource beds, supply exactly 234 red and 104 white wool, and label the objective and logged requests as supplied-material testing. Normal starts still require mining. Live test placed 15 blocks in 90 direct decisions with zero mined blocks, then paused.
+
+- Replaced the dashboard's batch/pathfinder execution with 18 model-selected primitives. Each move lasts at most 250 ms; aiming, equipment and single-block interactions require separate choices. Both scenarios use direct control, with terrain vetoes and live target verification.
+- Removed first person. Overhead works before starting a connected flag task and includes the wool beds. Added equipment and movement/digging telemetry plus a checked extension to the pinned viewer bundle for held shears/wool and limb animation.
+- Explicitly corrected the scope of the earlier video and completion claims: they demonstrated high-level choices, not direct movement control.
+- All 44 tests pass. Short live direct run: 93 decisions, 46 red blocks mined, 20 red inventory at the last log, no construction. Overhead and held shears were visually checked. Full flag completion remains unverified.
+
+
 ### Mine wool before building the Canadian flag
 
 - Added model-selected red/white wool mining and dropped-wool pickup. Inventory must cover the remaining blueprint before construction becomes available. Mining is restricted to separate prepared supply areas.

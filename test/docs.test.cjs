@@ -9,6 +9,7 @@ function fixture(t){
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  for(const dir of ['src','docs'])fs.mkdirSync(path.join(root,dir));
  fs.copyFileSync(path.join(__dirname,'../src/decisions.cjs'),path.join(root,'src/decisions.cjs'));
+ fs.copyFileSync(path.join(__dirname,'../src/direct-actions.cjs'),path.join(root,'src/direct-actions.cjs'));
  fs.copyFileSync(path.join(__dirname,'../docs/example-state.cjs'),path.join(root,'docs/example-state.cjs'));
  fs.copyFileSync(path.join(__dirname,'../docs/example-flag-state.cjs'),path.join(root,'docs/example-flag-state.cjs'));
  fs.writeFileSync(path.join(root,'README.md'),`Intro\n${START}\n${END}\nEnd\n`);

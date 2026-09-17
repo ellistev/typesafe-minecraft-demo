@@ -5,7 +5,7 @@ const {setTimeout:delay}=require('node:timers/promises');
 const flag=require('./flag.cjs');
 const resources=require('./flag-resources.cjs');
 // Fixed operator setup only. No command text comes from HTTP or model output.
-function resetCommands(origin,username,port,host){
+function resetCommands(origin,username,port,host,buildTest=false){
  if(port!==25576||!['127.0.0.1','localhost'].includes(host)||origin.x!==64||origin.y!==64||origin.z!==64||username!=='TypeSafeExplorer')throw new Error('Automatic reset is restricted to the configured isolated flag demo.');
  return [
   'tp TypeSafeExplorer 61.5 64 70.5',
@@ -20,7 +20,13 @@ function resetCommands(origin,username,port,host){
   'clear TypeSafeExplorer minecraft:red_wool',
   'clear TypeSafeExplorer minecraft:white_wool',
   'clear TypeSafeExplorer minecraft:shears',
-  'give TypeSafeExplorer minecraft:shears 2'
+  'give TypeSafeExplorer minecraft:shears 2',
+  ...(buildTest?[
+   'fill 64 64 45 81 64 57 minecraft:air replace minecraft:red_wool',
+   'fill 84 64 45 91 64 57 minecraft:air replace minecraft:white_wool',
+   'give TypeSafeExplorer minecraft:red_wool 234',
+   'give TypeSafeExplorer minecraft:white_wool 104'
+  ]:[])
  ];
 }
 function shouldStartFresh(task,p,budgetMs,now=Date.now()){return !task||task.finishedAt!=null||p?.complete||now-task.startedAt>=budgetMs;}
@@ -31,14 +37,15 @@ function assertResetSite(bot,task){
   if(!b||!(supply?['air',cell.name]:['air','red_wool','white_wool']).includes(b.name)||bot.blockAt(p.offset(0,-1,0))?.boundingBox!=='block')throw new Error('Reset stopped: the flag or supply site contains an obstruction or missing support.');
  }
 }
-async function resetFlag(bot,task,{port,host,enabled=process.env.FLAG_DEMO_RESET==='1',commandFile=path.resolve(__dirname,'../runtime/server-command.txt')}={}){
+async function resetFlag(bot,task,{port,host,buildTest=false,enabled=process.env.FLAG_DEMO_RESET==='1',commandFile=path.resolve(__dirname,'../runtime/server-command.txt')}={}){
+ if(buildTest&&!enabled)throw new Error('Build test requires the isolated reset adapter.');
  if(!enabled){if(flag.progress(bot,task).collected===338)throw new Error('Flag replay requires the isolated demo reset adapter (FLAG_DEMO_RESET=1).');return;}
- const commands=resetCommands(task.origin,bot.username,port,host);assertResetSite(bot,task);
+ const commands=resetCommands(task.origin,bot.username,port,host,buildTest);assertResetSite(bot,task);
  fs.writeFileSync(commandFile,commands.join('\n')+'\n',{flag:'wx'});
  const deadline=Date.now()+10000;
  while(Date.now()<deadline){
   await delay(200);const p=flag.progress(bot,task);
-  if(!fs.existsSync(commandFile)&&p.collected===0&&p.blocked===0&&p.unloaded===0&&p.inventory.red_wool===0&&p.inventory.white_wool===0&&p.supplyRemaining.red_wool===234&&p.supplyRemaining.white_wool===104&&resources.drops(bot,task).length===0&&bot.entity.position.distanceTo(new Vec3(61.5,64,70.5))<.5)return;
+  if(!fs.existsSync(commandFile)&&p.collected===0&&p.blocked===0&&p.unloaded===0&&p.inventory.red_wool===(buildTest?234:0)&&p.inventory.white_wool===(buildTest?104:0)&&p.supplyRemaining.red_wool===(buildTest?0:234)&&p.supplyRemaining.white_wool===(buildTest?0:104)&&resources.drops(bot,task).length===0&&bot.entity.position.distanceTo(new Vec3(61.5,64,70.5))<.5)return;
  }
  if(fs.existsSync(commandFile)&&fs.readFileSync(commandFile,'utf8')===commands.join('\n')+'\n')fs.unlinkSync(commandFile);
  throw new Error('Flag reset was not confirmed within 10 seconds. Check the local demo server wrapper.');

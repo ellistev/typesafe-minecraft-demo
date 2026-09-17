@@ -4,6 +4,14 @@ const {Vec3}=require('vec3');
 const {blueprint}=require('../src/flag.cjs');
 const {banks}=require('../src/flag-resources.cjs');
 const {resetCommands,shouldStartFresh,assertResetSite}=require('../src/flag-reset.cjs');
+test('build-only test grants exact materials and empties the prepared supply beds',()=>{
+ const args=[{x:64,y:64,z:64},'TypeSafeExplorer',25576,'127.0.0.1'];
+ const commands=resetCommands(...args,true);
+ assert.deepEqual(commands.filter(c=>/^give .*wool/.test(c)),['give TypeSafeExplorer minecraft:red_wool 234','give TypeSafeExplorer minecraft:white_wool 104']);
+ assert.ok(commands.includes('fill 64 64 45 81 64 57 minecraft:air replace minecraft:red_wool'));
+ assert.equal(resetCommands(...args).some(c=>/^give .*wool/.test(c)),false);
+ assert.throws(()=>resetCommands(args[0],args[1],25575,args[3],true));
+});
 test('replay refills world wool supplies and never gives building wool',()=>{
  const commands=resetCommands({x:64,y:64,z:64},'TypeSafeExplorer',25576,'127.0.0.1');
  assert.equal(commands.some(c=>/^give .*wool/.test(c)),false);assert.ok(commands.includes('give TypeSafeExplorer minecraft:shears 2'));

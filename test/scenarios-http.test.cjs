@@ -10,8 +10,8 @@ test('scenario API switches both ways, resets displayed state and rejects unavai
  t.after(()=>{child.kill();});
  await Promise.race([once(child.stdout,'data'),once(child,'exit').then(()=>{throw new Error('Test server exited before listening');}),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(new Error('Test server startup timed out')),10000);timer.unref();})]);
  const post=async body=>{const response=await fetch(`http://127.0.0.1:${port}/api/scenario`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:response.status,body:await response.json()};};
- const flag=await post({scenario:'flag'});assert.equal(flag.status,200);assert.equal(flag.body.scenario,'flag');assert.ok(flag.body.actionLabels.build_maple_leaf);assert.equal(flag.body.latest,null);assert.equal(flag.body.count,0);
- const lumber=await post({scenario:'lumber'});assert.equal(lumber.status,200);assert.ok(lumber.body.actionLabels.harvest_nearest);assert.equal(lumber.body.task,null);
+ const flag=await post({scenario:'flag'});assert.equal(flag.status,200);assert.equal(flag.body.scenario,'flag');assert.ok(flag.body.actionLabels.mine);assert.equal(flag.body.latest,null);assert.equal(flag.body.count,0);
+ const lumber=await post({scenario:'lumber'});assert.equal(lumber.status,200);assert.ok(lumber.body.actionLabels.forward);assert.equal(lumber.body.task,null);
  assert.equal((await post({scenario:'cabin'})).status,400);assert.equal((await post({scenario:'missing'})).status,400);
  const unchanged=await (await fetch(`http://127.0.0.1:${port}/api/state`)).json();assert.equal(unchanged.scenario,'lumber');assert.equal(unchanged.keyConfigured,false);
 });

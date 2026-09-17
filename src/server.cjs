@@ -12,9 +12,13 @@ const {scenarios,scenarioFor,apiFor}=require('./scenarios.cjs');
 const {actionsFor}=require('./decisions.cjs');
 let scenario=scenarioFor('lumber');
 let taskApi=apiFor(scenario.id);
-let camera='player';
+let camera='third';
+const {cameraPacket,avatarPacket}=require('./camera.cjs');
+const {viewerBundle}=require('./viewer-bundle.cjs');
+const direct=require('./direct-control.cjs');
 const { WorldView } = require('prismarine-viewer/viewer/lib/worldView');
-const { decide, isFresh } = require('./decisions.cjs');
+const { decide } = require('./decisions.cjs');
+const {decideFresh}=require('./fresh-decision.cjs');
 const { observe, point } = require('./observe.cjs');
 const { setTimeout: delay } = require('node:timers/promises');
 const app = express();
@@ -29,7 +33,7 @@ fs.mkdirSync(path.join(__dirname,'../runtime'), { recursive: true });
 const logFile = path.join(__dirname, '../runtime', `decisions-${Date.now()}.jsonl`);
 const clients = new Set();
 let connecting = false, connectedPort = Number(process.env.MC_PORT || 25575);
-function snapshot() { return { scenarios, scenario:scenario.id, actionLabels:Object.fromEntries(Object.keys(actionsFor({scenario:scenario.id})).map(k=>[k,k.replaceAll('_',' ')])), camera, restarting, busy:running||!!activeLoop, ready, running, status, goal, count, latest, gamePort:connectedPort, task:ready&&task?taskApi.progress(bot,task):null, position: ready ? point(bot.entity.position) : null, keyConfigured: !!process.env.TYPESAFE_API_KEY }; }
+function snapshot() { return { controlMode:'direct', scenarios, scenario:scenario.id, actionLabels:Object.fromEntries(Object.keys(actionsFor({scenario:scenario.id,controlMode:'direct'})).map(k=>[k,k.replaceAll('_',' ')])), camera, restarting, busy:running||!!activeLoop, ready, running, status, goal, count, latest, gamePort:connectedPort, task:ready&&task?taskApi.progress(bot,task):null, position: ready ? point(bot.entity.position) : null, keyConfigured: !!process.env.TYPESAFE_API_KEY }; }
 function broadcast() { const data = `data: ${JSON.stringify(snapshot())}\n\n`; for (const res of clients) res.write(data); }
 function pause(reason = 'Paused') { running = false; generation++; controller?.abort(); if(bot)lumber.cancel(bot); if(task && reason!=='Paused')task.finishedAt??=Date.now(); status = reason; broadcast(); }
 app.use(express.json({ limit:'4kb' }));
@@ -37,25 +41,27 @@ app.get('/api/state', (req,res) => res.json(snapshot()));
 app.get('/api/events', (req,res) => { res.set({'Content-Type':'text/event-stream','Cache-Control':'no-cache','Connection':'keep-alive'}); res.flushHeaders(); clients.add(res); res.write(`data: ${JSON.stringify(snapshot())}\n\n`); req.on('close',()=>clients.delete(res)); });
 app.post('/api/:action', (req,res) => {
   if (req.headers.origin && req.headers.origin !== `http://127.0.0.1:${port}` && req.headers.origin !== `http://localhost:${port}`) return res.sendStatus(403);
-  if(req.params.action==='restart'){
+  if(['restart','build-test'].includes(req.params.action)){
+    const buildTest=req.params.action==='build-test';
+    if(buildTest&&(scenario.id!=='flag'||process.env.FLAG_DEMO_RESET!=='1'))return res.status(409).json({error:'Build test requires Canadian Flag and the isolated reset adapter.'});
     if(!ready||!process.env.TYPESAFE_API_KEY)return res.status(409).json({error:'Minecraft and a TypeSafe key must be ready.'});
     if(restarting||(running&&!task))return res.status(409).json({error:'A reset is already in progress.'});
     if(bot.game.gameMode!=='survival')return res.status(409).json({error:'This task requires Survival mode.'});
     const previous=activeLoop;
     restarting=true;pause('Stopping current task to restart');
     running=true;const token=++generation;
-    trackRun(afterPreviousRun(previous,()=>running&&generation===token&&ready,()=>startRun(token,true)));
+    trackRun(afterPreviousRun(previous,()=>running&&generation===token&&ready,()=>startRun(token,true,buildTest)));
     broadcast();return res.json(snapshot());
   }
   if(req.params.action==='camera') {
-    if(!['player','overview'].includes(req.body.mode))return res.status(400).json({error:'Unknown camera mode'});
-    if(req.body.mode==='overview'&&(!task||scenario.id!=='flag'))return res.status(409).json({error:'Start a flag task first.'});
+    if(!['third','overview'].includes(req.body.mode))return res.status(400).json({error:'Unknown camera mode'});
+    if(req.body.mode==='overview'&&(!ready||scenario.id!=='flag'))return res.status(409).json({error:'Connect Minecraft and select Canadian Flag first.'});
     camera=req.body.mode;for(const socket of viewers)socket.data.updateCamera?.();broadcast();return res.json(snapshot());
   }
   if(req.params.action==='scenario') {
     if(running||activeLoop)return res.status(409).json({error:'Pause the current task before switching scenarios.'});
     try{scenario=scenarioFor(req.body.scenario);}catch(error){return res.status(400).json({error:error.message});}
-    taskApi=apiFor(scenario.id);goal=scenario.objective;task=null;latest=null;history=[];count=0;camera='player';
+    taskApi=apiFor(scenario.id);goal=scenario.objective;task=null;latest=null;history=[];count=0;if(camera==='overview')camera='third';
     if(bot?.pathfinder?.movements)bot.pathfinder.movements.canDig=scenario.id==='lumber';
     for(const socket of viewers)socket.data.updateCamera?.();status='Scenario selected. Press Start task.';broadcast();return res.json(snapshot());
   }
@@ -76,6 +82,9 @@ app.post('/api/:action', (req,res) => {
   trackRun(startRun(myGeneration,fresh));
   broadcast(); res.json(snapshot());
 });
+const animatedViewerBundle=viewerBundle();
+app.get('/view/index.js',(req,res)=>res.type('js').send(animatedViewerBundle));
+app.get('/view/',(req,res)=>res.type('html').send('<!doctype html><html><head><title>Minecraft viewer</title><style>html,body{margin:0;overflow:hidden}canvas{display:block}</style></head><body><script src="/avatar-animation.js"></script><script src="index.js"></script></body></html>'));
 app.use('/view', express.static(path.join(path.dirname(require.resolve('prismarine-viewer')), 'public')));
 app.use(express.static(path.join(__dirname, '../public')));
 
@@ -87,15 +96,19 @@ function attachViewer(socket) {
   const world = new WorldView(player.world, 4, player.entity.position, socket);
   world.listenToBot(player);
   world.init(player.entity.position).catch(() => {});
+  let swing=false;
+  const swung=()=>{swing=true;};
+  const animation=()=>{socket.emit('avatar-state',{pos:player.entity.position,pitch:player.entity.pitch,heldItem:player.heldItem?.name||null,digging:!!player.targetDigBlock,swing});swing=false;};
+  player.on('diggingCompleted',swung);
+  const animationTimer=setInterval(animation,50);
   const move = () => {
-    const overview=camera==='overview'&&scenario.id==='flag'&&task;
-    const position=overview?{x:task.origin.x+13,y:task.origin.y+25,z:task.origin.z+20}:player.entity.position;
-    socket.emit('position', { pos:position, yaw:overview?0:player.entity.yaw, pitch:overview?-Math.atan2(25,13.5):player.entity.pitch, addMesh:!overview });
+    socket.emit('entity',avatarPacket(player,camera));
+    socket.emit('position',cameraPacket(player,camera,task||(scenario.id==='flag'?taskApi.createTask(player):null)));
     world.updatePosition(player.entity.position).catch(() => {});
   };
   socket.data.updateCamera=move;
   player.on('move', move); move();
-  socket.on('disconnect', () => { player.removeListener('move',move); world.removeListenersFromBot(player); });
+  socket.on('disconnect', () => { clearInterval(animationTimer);player.removeListener('diggingCompleted',swung);player.removeListener('move',move); world.removeListenersFromBot(player); });
 }
 io.on('connection', socket => { viewers.add(socket); attachViewer(socket); socket.on('disconnect',()=>viewers.delete(socket)); });
 
@@ -103,17 +116,19 @@ function trackRun(operation){
   const tracked=operation.finally(()=>{if(activeLoop===tracked){activeLoop=null;restarting=false;}broadcast();});
   activeLoop=tracked;
 }
-async function startRun(token,fresh){
+async function startRun(token,fresh,buildTest=false){
   try{
     if(fresh){
-      history=[];latest=null;count=0;task=null;camera='player';
+      history=[];latest=null;count=0;task=null;if(camera==='overview')camera='third';
+      goal=buildTest?'BUILD TEST - materials supplied; mining skipped. Build and inspect the Canadian flag.':scenario.objective;
       status=scenario.id==='flag'?'Resetting flag and wool supply areas':'Starting a fresh task';broadcast();
       if(scenario.id==='flag'){
         const prepared=taskApi.createTask(bot);
-        await resetFlag(bot,prepared,{port:connectedPort,host:process.env.MC_HOST||'127.0.0.1'});
+        await resetFlag(bot,prepared,{port:connectedPort,host:process.env.MC_HOST||'127.0.0.1',buildTest});
       }
       if(!running||generation!==token||!ready)return;
       task=taskApi.createTask(bot);
+      task.setupMode=buildTest?'build-test-supplied-materials':'normal';
       for(const socket of viewers)socket.data.updateCamera?.();
     }
     if(!running||generation!==token||!ready)return;
@@ -124,27 +139,44 @@ async function startRun(token,fresh){
 }
 async function loop(token) {
   try {
-    while (running && generation === token && count < scenario.decisionLimit) {
+    while (running && generation === token && count < 6000) {
       const progress = taskApi.progress(bot,task);
       const stop = taskApi.stopReason(progress,task);
       if(stop){if(progress.complete&&scenario.id==='flag'){camera='overview';for(const socket of viewers)socket.data.updateCamera?.();}pause(stop);break;}
       if(bot.health<8)throw new Error('Stopped: health is low');
-      const state = observe(bot,goal,history);
-      state.scenario=scenario.id;
-      state.task = progress;
-      state.candidates = taskApi.candidates(bot,task);
       status = 'TypeSafe is deciding'; broadcast();
       controller = new AbortController();
-      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]);
-      const started = Date.now();
-      const result = await decide(state,{key:process.env.TYPESAFE_API_KEY,model:process.env.TYPESAFE_MODEL || 'jev-latest',signal});
-      if (!running || generation !== token || !ready) break;
-      if (!isFresh(state.position,point(bot.entity.position),Date.now()-started)) throw new Error('Observation changed or response was too slow. Paused before moving.');
+      const fresh=await decideFresh({
+        signal:controller.signal,
+        isActive:()=>running&&generation===token&&ready&&count<6000,
+        observe:()=>{
+          const state=observe(bot,goal,history);
+          state.scenario=scenario.id;state.controlMode='direct';
+          state.task={...taskApi.progress(bot,task),setupMode:task.setupMode||'normal'};
+          state.direct=direct.observeDirect(bot,task);
+          return state;
+        },
+        decide:state=>decide(state,{key:process.env.TYPESAFE_API_KEY,model:process.env.TYPESAFE_MODEL||'jev-latest',signal:AbortSignal.any([controller.signal,AbortSignal.timeout(10000)])}),
+        position:()=>point(bot.entity.position),
+        onServiceError:record=>{
+          fs.appendFileSync(logFile,JSON.stringify({timestamp:new Date().toISOString(),...record})+'\n');
+          const failure=record.errorType==='timeout'?'TypeSafe request timed out':`TypeSafe HTTP ${record.httpStatus}`;
+          status=record.retry?`${failure}; retrying in ${record.delayMs/1000}s`:`${failure}; retries exhausted`;
+          broadcast();
+        },
+        onDiscard:record=>{
+          latest={id:++count,timestamp:new Date().toISOString(),...record,progress:taskApi.progress(bot,task)};
+          fs.appendFileSync(logFile,JSON.stringify(latest)+'\n');
+          status='Skipped stale decision; observing again';broadcast();
+        }
+      });
+      if(!fresh)break;
+      const {state,result,freshness}=fresh;
       count++;
-      latest = { id:count, timestamp:new Date().toISOString(), state, ...result, outcome:'Executing' };
+      latest = { id:count, timestamp:new Date().toISOString(), state, ...result, freshness, outcome:'Executing' };
       status = `Executing ${result.answer.choice}`; broadcast();
       const actionSignal = AbortSignal.any([controller.signal,AbortSignal.timeout(Math.max(1,Math.min(scenario.actionMs,scenario.budgetMs-Date.now()+task.startedAt)))]);
-      const outcome = await taskApi.executeTask(bot,task,result.answer.choice,state.candidates,actionSignal);
+      const outcome = await direct.execute(bot,task,result.answer.choice,state.direct,actionSignal);
       const end = point(bot.entity.position);
       const moved = Math.hypot(end.x-state.position.x,end.z-state.position.z);
       latest.outcome = outcome;
@@ -157,7 +189,7 @@ async function loop(token) {
       broadcast();
       await delay(100);
     }
-    if (generation === token) pause(`Stopped: ${scenario.decisionLimit}-decision limit reached`);
+    if (generation === token) pause(`Stopped: 6000-decision limit reached`);
   } catch (error) {
     if(latest?.outcome==='Executing') {
       latest.outcome=generation===token?`Stopped: ${error.message}`:'Cancelled';

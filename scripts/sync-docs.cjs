@@ -6,8 +6,12 @@ const END = '<!-- typesafe-payload:end -->';
 
 function renderPayload(root = ROOT) {
   const { requestFor } = require(path.join(root, 'src/decisions.cjs'));
-  const state = require(path.join(root, 'docs/example-state.cjs'));
-  const flagState = require(path.join(root, 'docs/example-flag-state.cjs'));
+  const asDirect = original => {
+    const {candidates,...state}=original;
+    return {...state,recentActions:[],controlMode:'direct',direct:{miningTargets:[{name:state.scenario==='flag'?'red_wool':'oak_log',position:{x:15,y:64,z:28},distance:3,forward:3,right:0}],placementTargets:[],drops:[],heldItem:null,crosshair:null,canMine:false,canPlace:false,canInspect:false,movementSafe:{forward:true,backward:true,left:true,right:true,jump_forward:true}}};
+  };
+  const state = asDirect(require(path.join(root, 'docs/example-state.cjs')));
+  const flagState = asDirect(require(path.join(root, 'docs/example-flag-state.cjs')));
   return '**Lumber Run (synthetic)**\n\n```json\n' + JSON.stringify(requestFor(state), null, 2) + '\n```\n\n**Canadian Flag (synthetic)**\n\n```json\n' + JSON.stringify(requestFor(flagState),null,2) + '\n```';
 }
 function replacePayload(readme, payload) {

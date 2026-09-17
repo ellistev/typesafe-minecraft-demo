@@ -17,8 +17,10 @@ const flagActions = {
   inspect_flag:'Verify the finished flag. Choose only when candidates.canInspect is true.',
   wait:'Wait if no construction action is available.'
 };
-const actionsFor = state => state?.scenario==='flag'?flagActions:actions;
+const direct=require('./direct-actions.cjs');
+const actionsFor = state => state?.controlMode==='direct'?direct.availableActions(state):state?.scenario==='flag'?flagActions:actions;
 function requestFor(state, model = 'jev-latest') {
+  if(state.controlMode==='direct')return {model,state,questions:{movement:{type:'choice',instructions:direct.instructions,criteria:actionsFor(state)}}};
   return { model, state, questions: { movement: {
     type: 'choice',
     instructions: state.scenario==='flag' ? 'Choose the next gathering or construction step for the Canadian flag. First mine and collect ALL remaining materials: task.inventory must cover task.required for both colors before any building. During gathering choose a nonempty candidates.red_wool or candidates.white_wool batch, preferably the closer supply, or collect_wool for an available drop. Empty candidates are unavailable. Code restricts mining to the prepared supply areas; never mine the flag. Once all wool is in inventory, choose construction. The blueprint is supplied by code; you choose which section to build next. Prefer available nearby work and avoid recent failures. candidates contains up to four exact placements per section. An empty section is unavailable. When candidates.canInspect is true, select inspect_flag. Observed inventory and block matches are facts. Never claim success without world verification.' : 'Choose the next Minecraft action to collect 10 new logs and return home. Use task progress, observed candidates, and recent outcomes. Return home once task.collected >= task.target. Otherwise collect reachable dropped logs, or choose a reachable log to harvest; explore if neither exists. A missing or null candidate makes that action unavailable. Avoid repeating failed actions. Candidates come from loaded world blocks, not camera images. Code navigates and executes one bounded action; your choice determines which action runs. Completion is verified from inventory and position, not your confidence.',
@@ -44,7 +46,11 @@ async function decide(state, { key, model, signal, fetchImpl = fetch }) {
     method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(request), signal
   });
-  if (!response.ok) throw new Error(`TypeSafe HTTP ${response.status}. Run paused; check credentials, balance or rate limits.`);
+  if (!response.ok) {
+    const error=new Error(`TypeSafe HTTP ${response.status}`);
+    error.status=response.status;
+    throw error;
+  }
   const raw = await response.json();
   return { request, answer: validateAnswer(raw, actionsFor(state)), raw, latencyMs: Math.round(performance.now() - started) };
 }

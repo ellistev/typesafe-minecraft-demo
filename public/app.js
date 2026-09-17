@@ -22,19 +22,22 @@ connection.append(connectionLabel,lanPort,connectButton,connectionHelp);document
 connectButton.onclick=async()=>{try{const r=await fetch('/api/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({port:Number(lanPort.value)})});const s=await r.json();if(!r.ok)throw new Error(s.error);render(s);}catch(error){$('status').textContent=error.message;}};
 function render(s) {
   if(lastScenario!==s.scenario){
-    lastScenario=s.scenario;renderBars(s.actionLabels);
+    lastScenario=s.scenario;
     $('scenario').replaceChildren(...s.scenarios.map(item=>{const option=document.createElement('option');option.value=item.id;option.textContent=item.name+(item.available?'':' (coming next)');option.disabled=!item.available;return option;}));
     $('scenario').value=s.scenario;
   }
+  const offered=s.latest?.request?.questions?.movement?.criteria||{};
+  const offeredLabels=Object.fromEntries(Object.keys(offered).map(key=>[key,s.actionLabels[key]||key.replaceAll('_',' ')]));
+  if(JSON.stringify(Object.keys(labels))!==JSON.stringify(Object.keys(offeredLabels)))renderBars(offeredLabels);
   $('scenario').disabled=s.busy;
   $('scenario').value=s.scenario;
   $('scenario-info').textContent=s.scenarios.find(item=>item.id===s.scenario).description;
   $('goal').value=s.goal;
-  $('camera').hidden=s.scenario!=='flag';$('camera').disabled=!s.task;
-  $('camera').textContent=s.camera==='overview'?'Player view':'Overhead view';
-  $('camera').dataset.mode=s.camera==='overview'?'player':'overview';
-  document.querySelector('.world-label').textContent=s.camera==='overview'?'MINECRAFT JAVA / OVERHEAD CAMERA':'MINECRAFT JAVA / LIVE PLAYER VIEW';
-  $('view').title=s.camera==='overview'?'Live overhead Minecraft world':'Live first-person Minecraft world';
+  $('camera').disabled=!s.ready;$('camera').value=s.camera;
+  $('camera').querySelector('[value="overview"]').disabled=s.scenario!=='flag'||!s.ready;
+  const cameraLabel={third:'THIRD-PERSON FOLLOW',player:'FIRST-PERSON VIEW',overview:'OVERHEAD CAMERA'}[s.camera];
+  document.querySelector('.world-label').textContent='MINECRAFT JAVA / '+cameraLabel;
+  $('view').title='Live Minecraft '+cameraLabel.toLowerCase();
   $('milestones').textContent=s.task?.stage==='gathering'?'Mine the wool supply areas, collect every drop, then build.':s.task?.sections?Object.entries(s.task.sections).map(([name,p])=>name.replaceAll('_',' ')+': '+p.placed+'/'+p.total).join(' | '):'';
   $('task-meter').max=s.task?.target||(s.scenario==='flag'?338:10);
   if(s.scenario==='flag')$('task-progress').textContent=s.task?    (s.task.stage==='gathering'?'Gathering: '+s.task.inventory.red_wool+'/'+s.task.required.red_wool+' red, '+s.task.inventory.white_wool+'/'+s.task.required.white_wool+' white':s.task.collected+' / '+s.task.target+' flag blocks verified')+' | '+s.task.remainingSeconds+'s left':'Mine 234 red + 104 white wool, then build the flag.';
@@ -44,6 +47,7 @@ function render(s) {
   $('pause').disabled=!s.running;
   $('restart').disabled=!s.ready||!s.keyConfigured||s.restarting||(s.busy&&!s.task);
   $('restart').textContent=s.restarting?'Restarting...':'Restart task';
+  $('build-test').hidden=s.scenario!=='flag';$('build-test').disabled=$('restart').disabled;
   $('copy-input').disabled=!s.latest?.request;
   $('copy-output').disabled=!s.latest?.raw;
   $('goal').readOnly=true;
@@ -79,8 +83,9 @@ events.onmessage=e=>render(JSON.parse(e.data));
 events.onerror=()=>{$('status').textContent='Dashboard disconnected. Reconnecting...';$('start').disabled=true;};
 async function command(action,payload={}){try{const response=await fetch(`/api/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const body=await response.json();if(!response.ok)throw new Error(body.error);render(body);}catch(error){$('status').textContent=error.message;}}
 $('scenario').onchange=()=>command('scenario',{scenario:$('scenario').value});
-$('camera').onclick=()=>command('camera',{mode:$('camera').dataset.mode});
+$('camera').onchange=()=>command('camera',{mode:$('camera').value});
 $('restart').onclick=()=>command('restart');
+$('build-test').onclick=()=>command('build-test');
 $('start').onclick=()=>command('start');$('pause').onclick=()=>command('pause');
 let recorder, stream;
 $('record').onclick=async()=>{

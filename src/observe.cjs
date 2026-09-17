@@ -15,7 +15,10 @@ function inspect(bot, yaw, distance) {
   if (blocks.some(b => hazards.has(b.name))) status = 'hazard';
   else if (solid(head) || (solid(feet) && solid(above))) status = 'blocked';
   else if (solid(feet)) status = 'one_block_rise';
-  else if (!solid(ground)) status = 'drop_or_no_floor';
+  else if (!solid(ground)) {
+    const lower=bot.blockAt(new Vec3(Math.floor(x),y-2,Math.floor(z)));
+    status=lower&&solid(lower)&&!hazards.has(lower.name)?'one_block_descent':'drop_or_no_floor';
+  }
   return { distance, status, ground: ground.name, feet: feet.name, head: head.name };
 }
 
